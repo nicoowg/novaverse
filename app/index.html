@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>NovaVerse</title>
+
+  <!-- HUD-overlay efter DESIGN.md (bygget af fleet: hud.css) -->
+  <link rel="stylesheet" href="hud.css?v=2">
+
+  <style>
+    /* Fuldskaerm: canvas fylder hele viewporten, HUD ligger ovenpaa. */
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #07080D; /* bg-void mens scenen booter */
+      color: #F4F6FF;
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+
+    /* WebGL-lasted: 3D-klienten tegner alt her. */
+    #stage {
+      display: block;
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      cursor: crosshair; /* nova-cursor-foelelse; pointer lock skjuler den under spil */
+      touch-action: none;
+    }
+
+    /* Boot/fejl-besked, centreret, forsvinder naar scenen koerer. */
+    #boot {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+      z-index: 60;
+      color: #7C8398;
+      font-family: 'Chakra Petch', ui-monospace, monospace;
+      letter-spacing: 0.04em;
+      background: radial-gradient(120% 120% at 50% 30%, #0C0E16 0%, #07080D 70%);
+      transition: opacity 420ms cubic-bezier(.22,1,.36,1);
+    }
+    #boot.hidden { opacity: 0; pointer-events: none; }
+    /* Roterende nova-glyph som loader (8-takket burst), aurora-stroke. */
+    #boot .glyph {
+      width: 44px; height: 44px;
+      animation: nova-spin 2.4s linear infinite;
+    }
+    @keyframes nova-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { #boot .glyph { animation: none; } }
+
+    /* "Forlad spil" - glas-pill nederst til venstre (Roblox-stil: ud af spillet). */
+    #leave-game {
+      position: fixed;
+      left: 16px; bottom: 16px;
+      z-index: 40;
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 9px 15px 9px 12px;
+      font: 600 13px/1 'Inter', system-ui, sans-serif;
+      color: #f4f6ff;
+      background: rgba(12,14,22,.6);
+      -webkit-backdrop-filter: blur(20px) saturate(140%);
+      backdrop-filter: blur(20px) saturate(140%);
+      border: 1px solid rgba(255,255,255,.14);
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 18px 48px -20px rgba(0,0,0,.75);
+      transition: border-color 180ms cubic-bezier(.22,1,.36,1), background 180ms cubic-bezier(.22,1,.36,1), transform 180ms cubic-bezier(.22,1,.36,1);
+    }
+    #leave-game:hover { border-color: rgba(124,92,255,.6); background: rgba(18,21,37,.7); }
+    #leave-game:active { transform: scale(.97); }
+    #leave-game svg { width: 14px; height: 14px; flex: 0 0 auto; }
+
+    /* App-only gate: vises KUN i browser (uden ?dev=1). Spillet koerer kun i appen. */
+    #appgate {
+      position: fixed; inset: 0; z-index: 80;
+      display: none; align-items: center; justify-content: center;
+      background: radial-gradient(130% 130% at 50% 25%, #0e1020 0%, #07080d 72%);
+      font-family: 'Inter', system-ui, sans-serif;
+    }
+    #appgate .card {
+      width: min(420px, 86vw);
+      text-align: center;
+      padding: 36px 32px;
+      background: rgba(14,16,28,.72);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 20px;
+      box-shadow: 0 30px 80px -30px rgba(0,0,0,.85), 0 0 0 1px rgba(124,92,255,.12) inset;
+      -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    }
+    #appgate .mark { width: 46px; height: 46px; margin: 0 auto 18px; display: block; }
+    #appgate h1 {
+      margin: 0 0 10px; font-size: 24px; font-weight: 700; letter-spacing: -0.01em;
+      background: linear-gradient(135deg,#7c5cff,#4d7cff 45%,#38e1ff);
+      -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+    }
+    #appgate p { margin: 0 0 22px; font-size: 14px; line-height: 1.5; color: #9aa0b6; }
+    #appgate a.btn {
+      display: inline-block; text-decoration: none;
+      padding: 12px 22px; border-radius: 999px;
+      font-size: 14px; font-weight: 600; color: #0a0b12;
+      background: linear-gradient(135deg,#7c5cff,#4d7cff 50%,#38e1ff);
+      box-shadow: 0 12px 36px -10px rgba(77,124,255,.6);
+      transition: transform 160ms cubic-bezier(.22,1,.36,1);
+    }
+    #appgate a.btn:hover { transform: translateY(-1px); }
+    #appgate .hint { margin-top: 16px; font-size: 12px; color: #6b7186; }
+  </style>
+</head>
+<body>
+  <!-- Fuldskaerm 3D-lasted -->
+  <canvas id="stage"></canvas>
+
+  <!-- HUD-overlay. Selektorer matcher hud.css praecist (DOM-kontrakt fra fleet). -->
+  <div id="hud" aria-hidden="true">
+    <!-- Top-venstre: spiller-chip (avatar-prik i avatar-farve + navn) -->
+    <div id="hud-player">
+      <span class="player-dot" id="player-dot"></span>
+      <span class="player-name" id="player-name">Spiller</span>
+    </div>
+
+    <!-- Top-hoejre: rum-id + spillere + ping (Chakra Petch, mono) -->
+    <div id="hud-room">
+      <div id="hud-conn"><span class="conn-dot is-warn" id="conn-dot"></span></div>
+      <div class="stat">
+        <span class="stat-label">Rum</span>
+        <span class="stat-value is-accent" id="stat-room">-</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Spillere</span>
+        <span class="stat-value" id="stat-players">1</span>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Ping</span>
+        <span class="stat-value is-ok" id="stat-ping">--</span>
+      </div>
+    </div>
+
+    <!-- Bund-midte: diskrete kontrol-hints -->
+    <div id="hud-hints">
+      <span class="hint"><span class="keycap">WASD</span><span class="hint-label">bevaeg</span></span>
+      <span class="hint"><span class="keycap">SPACE</span><span class="hint-label">hop</span></span>
+      <span class="hint"><span class="keycap">MUS</span><span class="hint-label">kig</span></span>
+    </div>
+
+    <!-- Navne-skilte tilfoejes dynamisk her af main.js (projiceret over figurer) -->
+    <div id="nametags"></div>
+  </div>
+
+  <!-- Forlad spil -> tilbage til in-app hub (main.js saetter href med identitet). -->
+  <button id="leave-game" type="button" aria-label="Forlad spil og find andre spil">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path d="M15 5l-7 7 7 7" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    Forlad spil
+  </button>
+
+  <!-- App-only gate (vises kun i browser uden ?dev=1) -->
+  <div id="appgate">
+    <div class="card">
+      <svg class="mark" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <defs>
+          <linearGradient id="gm" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#7C5CFF"/><stop offset="0.5" stop-color="#4D7CFF"/><stop offset="1" stop-color="#38E1FF"/>
+          </linearGradient>
+        </defs>
+        <path d="M12 1.5 L13.4 9 L19.8 4.2 L15 10.6 L22.5 12 L15 13.4 L19.8 19.8 L13.4 15 L12 22.5 L10.6 15 L4.2 19.8 L9 13.4 L1.5 12 L9 10.6 L4.2 4.2 L10.6 9 Z"
+              stroke="url(#gm)" stroke-width="1.5" stroke-linejoin="round" fill="rgba(124,92,255,0.1)"/>
+      </svg>
+      <h1>Spil i NovaVerse-appen</h1>
+      <p>NovaVerse-spil koerer kun i appen for bedste ydelse og sikkerhed. Aabn appen for at spille og finde andre spil.</p>
+      <a class="btn" href="novaverse://hub">Aabn NovaVerse</a>
+      <div class="hint">Har du ikke appen? Hent den fra portalen.</div>
+    </div>
+  </div>
+
+  <!-- Boot/loader overlay -->
+  <div id="boot">
+    <svg class="glyph" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="aur" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#7C5CFF"/><stop offset="0.5" stop-color="#4D7CFF"/><stop offset="1" stop-color="#38E1FF"/>
+        </linearGradient>
+      </defs>
+      <!-- 8-takket nova-burst -->
+      <path d="M12 1.5 L13.4 9 L19.8 4.2 L15 10.6 L22.5 12 L15 13.4 L19.8 19.8 L13.4 15 L12 22.5 L10.6 15 L4.2 19.8 L9 13.4 L1.5 12 L9 10.6 L4.2 4.2 L10.6 9 Z"
+            stroke="url(#aur)" stroke-width="1.5" stroke-linejoin="round" fill="rgba(124,92,255,0.08)"/>
+    </svg>
+    <div id="boot-text">Indlaeser NovaVerse...</div>
+  </div>
+
+  <!-- Runtime-config (server-URL'er). Loades FOER gaten + modulet. -->
+  <script src="config.js"></script>
+
+  <!-- Importmap: bare specifier "three" -> lokalt vendoreret build (offline file:// virker) -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three.module.js"
+    }
+  }
+  </script>
+
+  <!-- Gate: spillet koerer i appen (file://), i den PUBLICEREDE web-build (config.allowWeb),
+       eller med ?dev=1. Ellers vises 'aabn i app'-overlayet. -->
+  <script>
+    (function () {
+      var dev = new URLSearchParams(location.search).has('dev');
+      var inApp = location.protocol === 'file:';
+      var web = !!(window.NOVA_CONFIG && window.NOVA_CONFIG.allowWeb);
+      if (inApp || dev || web) {
+        var s = document.createElement('script');
+        s.type = 'module';
+        s.src = 'main.js?v=9';
+        document.body.appendChild(s);
+      } else {
+        var gate = document.getElementById('appgate');
+        if (gate) gate.style.display = 'flex';
+        var boot = document.getElementById('boot'); if (boot) boot.style.display = 'none';
+        var leave = document.getElementById('leave-game'); if (leave) leave.style.display = 'none';
+      }
+    })();
+  </script>
+</body>
+</html>

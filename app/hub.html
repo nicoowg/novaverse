@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>NovaVerse - Spil</title>
+  <style>
+    /* ===== NovaVerse in-app hub (spil-browser) - premium late-night DNA ===== */
+    :root {
+      --bg-void:#07080d; --bg-base:#0c0e16; --bg-raised:#121525;
+      --stroke:rgba(255,255,255,.08); --stroke-strong:rgba(255,255,255,.14);
+      --text-hi:#f4f6ff; --text:#c3c8dc; --text-dim:#7c8398;
+      --violet:#7c5cff; --indigo:#4d7cff; --cyan:#38e1ff;
+      --aurora:linear-gradient(135deg,#7c5cff 0%,#4d7cff 45%,#38e1ff 100%);
+      --ease:cubic-bezier(.22,1,.36,1);
+      --spring:cubic-bezier(.34,1.56,.64,1);
+      --font-ui:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+      --font-display:"Space Grotesk",ui-sans-serif,system-ui,sans-serif;
+      --font-mono:"Chakra Petch",ui-monospace,"SF Mono",Menlo,monospace;
+    }
+    * { box-sizing:border-box; }
+    html,body { margin:0; min-height:100%; }
+    body {
+      background:var(--bg-void);
+      color:var(--text);
+      font-family:var(--font-ui);
+      -webkit-font-smoothing:antialiased;
+      overflow-x:hidden;
+    }
+    /* Levende aurora-baggrund + svaevende glyffer (mindre tekst, mere liv). */
+    #bg { position:fixed; inset:0; z-index:0; overflow:hidden; pointer-events:none;
+          background:
+            radial-gradient(120% 90% at 12% -10%, rgba(124,92,255,.20), transparent 55%),
+            radial-gradient(110% 90% at 92% 0%, rgba(56,225,255,.14), transparent 55%),
+            radial-gradient(120% 120% at 50% 120%, rgba(77,124,255,.16), transparent 60%),
+            var(--bg-void); }
+    /* Floating + rotating logo layer: outer = drift, inner = spin (decoupled). */
+    #bg .glyph { position:absolute; will-change:transform;
+                 animation:driftA ease-in-out infinite both; }
+    #bg .glyph.dB { animation-name:driftB; }
+    #bg .glyph.dC { animation-name:driftC; }
+    #bg .glyph i { display:block; width:100%; height:100%;
+                   will-change:transform, filter;
+                   animation:glyphSpin linear infinite both; }
+    #bg .glyph i svg { display:block; width:100%; height:100%; }
+
+    /* Drift sets: gentle translate paths, no rotation here (spin is on the inner). */
+    @keyframes driftA {
+      0%   { transform:translate3d(0,0,0); }
+      25%  { transform:translate3d(14px,-22px,0); }
+      50%  { transform:translate3d(-8px,-34px,0); }
+      75%  { transform:translate3d(-18px,-12px,0); }
+      100% { transform:translate3d(0,0,0); }
+    }
+    @keyframes driftB {
+      0%   { transform:translate3d(0,0,0); }
+      33%  { transform:translate3d(-20px,-16px,0); }
+      66%  { transform:translate3d(12px,-30px,0); }
+      100% { transform:translate3d(0,0,0); }
+    }
+    @keyframes driftC {
+      0%   { transform:translate3d(0,0,0); }
+      30%  { transform:translate3d(16px,-12px,0); }
+      60%  { transform:translate3d(22px,-28px,0); }
+      100% { transform:translate3d(0,0,0); }
+    }
+    /* Single spin keyframe; reverse handled per-glyph via animation-direction:reverse. */
+    @keyframes glyphSpin { to { transform:rotate(360deg); } }
+    #grain { position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.04; mix-blend-mode:overlay;
+      background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+    .wrap { position:relative; z-index:2; max-width:1120px; margin:0 auto; padding:22px 24px 56px; }
+
+    /* Top-bar: wordmark + spiller-chip */
+    header.bar { display:flex; align-items:center; justify-content:space-between; margin-bottom:30px; }
+    .brand { display:inline-flex; align-items:center; gap:11px; }
+    .brand .mark { width:30px; height:30px; animation:spin 18s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    .brand .word { font-family:var(--font-display); font-weight:700; font-size:21px; letter-spacing:-.01em;
+      background:linear-gradient(100deg,#7c5cff 0%,#4d7cff 30%,#38e1ff 50%,#4d7cff 70%,#7c5cff 100%);
+      background-size:200% auto;
+      -webkit-background-clip:text; background-clip:text; -webkit-text-fill-color:transparent; color:transparent;
+      animation:wordShimmer 6s linear infinite; will-change:background-position; }
+    .pchip { display:inline-flex; align-items:center; gap:9px; padding:8px 14px 8px 11px; border-radius:999px;
+      background:rgba(12,14,22,.6); border:1px solid var(--stroke); -webkit-backdrop-filter:blur(18px); backdrop-filter:blur(18px); }
+    .pchip .dot { width:10px; height:10px; border-radius:50%; background:var(--cyan); box-shadow:0 0 10px 1px rgba(56,225,255,.5);
+      animation:dotPulse 2.6s var(--ease) infinite; will-change:box-shadow,opacity; }
+    .pchip .nm { font-weight:600; font-size:13px; color:var(--text-hi); max-width:18ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    /* Hero (featured spil) */
+    .hero { position:relative; border-radius:22px; overflow:hidden; padding:34px 34px; margin-bottom:34px;
+      border:1px solid var(--stroke-strong); cursor:pointer; min-height:188px;
+      display:flex; flex-direction:column; justify-content:flex-end; gap:8px;
+      box-shadow:0 30px 80px -36px rgba(0,0,0,.85);
+      transition:transform .26s var(--ease), border-color .26s var(--ease), box-shadow .26s var(--ease);
+      animation:heroIn .54s var(--ease) both; will-change:transform; }
+    .hero:hover { transform:translateY(-3px); border-color:color-mix(in srgb, var(--c-accent,#7c5cff) 55%, transparent);
+      box-shadow:0 30px 80px -36px rgba(0,0,0,.85),
+        0 24px 70px -28px color-mix(in srgb, var(--c-accent,#7c5cff) 50%, transparent); }
+    .hero .art { position:absolute; inset:0; z-index:0; opacity:.9; }
+    .hero .scrim { position:absolute; inset:0; z-index:1; background:linear-gradient(180deg,rgba(7,8,13,.05) 0%,rgba(7,8,13,.78) 100%); }
+    .hero > * { position:relative; z-index:2; }
+    .hero .feat { font-size:11px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:var(--cyan); }
+    .hero h2 { margin:0; font-family:var(--font-display); font-size:30px; font-weight:700; letter-spacing:-.01em; color:var(--text-hi); }
+    .hero p { margin:0; font-size:14px; color:var(--text); max-width:46ch; }
+    .hero .play { margin-top:12px; align-self:flex-start; display:inline-flex; align-items:center; gap:8px;
+      padding:11px 20px; border-radius:999px; font-weight:600; font-size:14px; color:#0a0b12;
+      background:var(--aurora); box-shadow:0 12px 36px -10px rgba(77,124,255,.6); }
+    .hero .play svg { width:15px; height:15px; flex:0 0 auto; }
+
+    /* Sektions-titel */
+    .sec-h { display:flex; align-items:baseline; justify-content:space-between; margin:0 2px 14px; }
+    .sec-h h3 { margin:0; font-family:var(--font-display); font-size:17px; font-weight:700; color:var(--text-hi); letter-spacing:-.01em; }
+    .sec-h .count { font-family:var(--font-mono); font-size:12px; color:var(--text-dim); }
+
+    /* Grid af spil-kort */
+    .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(244px,1fr)); gap:18px; }
+    .card { position:relative; border-radius:18px; overflow:hidden; cursor:pointer;
+      background:rgba(14,16,28,.6); border:1px solid var(--stroke);
+      -webkit-backdrop-filter:blur(14px); backdrop-filter:blur(14px);
+      box-shadow:0 18px 48px -28px rgba(0,0,0,.8);
+      transition:transform .24s var(--spring), border-color .22s var(--ease), box-shadow .24s var(--ease);
+      animation:cardIn .52s var(--ease) both; animation-delay:calc(var(--i,0) * 60ms); will-change:transform; }
+    .card:hover { transform:translateY(-6px) scale(1.012); border-color:var(--c-accent,rgba(124,92,255,.6));
+      box-shadow:0 30px 66px -26px rgba(0,0,0,.92),
+        0 22px 54px -30px color-mix(in srgb, var(--c-accent,#8b5cff) 55%, transparent); }
+    /* Soft accent radial glow on hover, tinted by the card's --c-accent. */
+    .card::before {
+      content:""; position:absolute; inset:0; z-index:0; pointer-events:none;
+      border-radius:inherit; opacity:0;
+      background:radial-gradient(120% 80% at 50% 0%,
+        color-mix(in srgb, var(--c-accent,#8b5cff) 30%, transparent) 0%, transparent 60%);
+      transition:opacity .24s var(--ease); will-change:opacity;
+    }
+    .card:hover::before { opacity:.9; }
+    /* Keep card content above the glow layer (thumb/body are not positioned). */
+    .card > * { position:relative; z-index:1; }
+    .card .thumb { position:relative; aspect-ratio:16/10; overflow:hidden; }
+    .card .thumb svg { position:absolute; inset:0; width:100%; height:100%; }
+    .card .body { padding:14px 16px 16px; }
+    .card .title { font-family:var(--font-display); font-weight:700; font-size:16px; color:var(--text-hi); letter-spacing:-.01em; margin:0 0 4px; }
+    .card .desc { font-size:12.5px; line-height:1.45; color:var(--text-dim); margin:0 0 12px; min-height:36px; }
+    .card .row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    .mode { display:inline-flex; align-items:center; gap:6px; font-size:10.5px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+      padding:5px 10px; border-radius:999px; color:var(--c-accent,#8b5cff);
+      background:color-mix(in srgb, var(--c-accent,#8b5cff) 16%, transparent);
+      border:1px solid color-mix(in srgb, var(--c-accent,#8b5cff) 36%, transparent); }
+    .mode .d { width:6px; height:6px; border-radius:50%; background:var(--c-accent,#8b5cff); box-shadow:0 0 8px var(--c-accent,#8b5cff); }
+    .join { display:inline-flex; align-items:center; gap:6px; padding:8px 14px; border-radius:999px;
+      font-weight:600; font-size:13px; color:var(--text-hi);
+      background:rgba(255,255,255,.06); border:1px solid var(--stroke-strong);
+      transition:background .18s var(--ease), border-color .18s var(--ease),
+        transform .2s var(--spring), box-shadow .2s var(--ease); will-change:transform; }
+    .card:hover .join { background:color-mix(in srgb, var(--c-accent,#8b5cff) 26%, transparent);
+      border-color:var(--c-accent,#8b5cff); transform:translateY(-1px);
+      box-shadow:0 8px 22px -10px color-mix(in srgb, var(--c-accent,#8b5cff) 60%, transparent); }
+    .join svg { width:13px; height:13px; }
+
+    footer.foot { margin-top:40px; text-align:center; font-size:12px; color:var(--text-dim); }
+    footer.foot .conn { display:inline-flex; align-items:center; gap:7px; }
+    footer.foot .conn .d { width:7px; height:7px; border-radius:50%; background:var(--text-dim); }
+    footer.foot .conn.live .d { background:#36e0a0; box-shadow:0 0 8px 1px rgba(54,224,160,.5); }
+
+    /* ===== Entrance + micro-interaction keyframes (advanced hub UI) ===== */
+    @keyframes cardIn {
+      from { opacity:0; transform:translate3d(0,14px,0) scale(.98); }
+      to   { opacity:1; transform:translate3d(0,0,0) scale(1); }
+    }
+    @keyframes heroIn {
+      from { opacity:0; transform:translate3d(0,18px,0) scale(.985); }
+      to   { opacity:1; transform:translate3d(0,0,0) scale(1); }
+    }
+    @keyframes wordShimmer {
+      0%   { background-position:0% 50%; }
+      100% { background-position:200% 50%; }
+    }
+    @keyframes dotPulse {
+      0%,100% { box-shadow:0 0 10px 1px rgba(56,225,255,.5); opacity:1; }
+      50%     { box-shadow:0 0 16px 3px rgba(56,225,255,.7); opacity:.78; }
+    }
+
+    @media (max-width:560px) {
+      .hero h2 { font-size:24px; } .grid { grid-template-columns:1fr 1fr; gap:12px; }
+      .card .thumb { aspect-ratio:16/11; } .wrap { padding:18px 16px 48px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #bg .glyph, #bg .glyph i, .brand .mark, .brand .word, .pchip .dot { animation:none !important; }
+      .card, .hero { animation:none; opacity:1; transform:none; }
+      .card:hover, .hero:hover { transform:none; }
+      .card:hover .join { transform:none; }
+      .card::before, .card:hover::before { transition:none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="bg"></div>
+  <div id="grain"></div>
+
+  <div class="wrap">
+    <header class="bar">
+      <span class="brand">
+        <svg class="mark" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <defs><linearGradient id="bmk" x1="0" y1="0" x2="24" y2="24" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#7C5CFF"/><stop offset="0.5" stop-color="#4D7CFF"/><stop offset="1" stop-color="#38E1FF"/>
+          </linearGradient></defs>
+          <path d="M12 1.5 L13.4 9 L19.8 4.2 L15 10.6 L22.5 12 L15 13.4 L19.8 19.8 L13.4 15 L12 22.5 L10.6 15 L4.2 19.8 L9 13.4 L1.5 12 L9 10.6 L4.2 4.2 L10.6 9 Z"
+                stroke="url(#bmk)" stroke-width="1.4" stroke-linejoin="round" fill="rgba(124,92,255,0.10)"/>
+        </svg>
+        <span class="word">NovaVerse</span>
+      </span>
+      <span class="pchip"><span class="dot" id="p-dot"></span><span class="nm" id="p-name">Spiller</span></span>
+    </header>
+
+    <section id="hero" class="hero"></section>
+
+    <div class="sec-h">
+      <h3>Alle spil</h3>
+      <span class="count" id="game-count"></span>
+    </div>
+    <section class="grid" id="grid"></section>
+
+    <footer class="foot">
+      <span class="conn" id="conn"><span class="d"></span><span id="conn-label">offline-katalog</span></span>
+    </footer>
+  </div>
+
+  <script src="config.js"></script>
+  <script src="hub.js?v=4"></script>
+</body>
+</html>

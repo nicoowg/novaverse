@@ -1,0 +1,1076 @@
+/* =====================================================================
+   NovaVerse — in-game 3D HUD overlay (hud.css)
+   Standalone, selv-indeholdt stylesheet til FUI-overlay ovenpaa et
+   fullscreen <canvas>. Bygget efter DESIGN.md: aurora som ENESTE accent,
+   tynde 1px "brackets", lave-opacity glas-chips, aegte depth + grain.
+   Reglen over alle regler: HUD'en blokerer ALDRIG midten.
+   Engelsk i kode/markup, dansk i kommentarer, ingen emoji (ikoner = SVG i DOM).
+   ===================================================================== */
+
+/* --- Fonts --------------------------------------------------------------
+   Google Fonts er fint online. Offline-screenshot falder tilbage paa
+   robuste system-fonte, saa HUD'en stadig ser skarp ud uden netvaerk. */
+@import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=Inter:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap');
+
+/* --- Design tokens (self-contained, genbrugelige) ---------------------- */
+:root {
+  /* Baggrunde */
+  --bg-void:   #07080D;   /* dybeste baggrund */
+  --bg-base:   #0C0E16;   /* panel-base */
+  --bg-raised: #121525;   /* haevet flade */
+  --bg-input:  #171A2B;
+
+  /* Strokes (haarfine kanter) */
+  --stroke:        rgba(255, 255, 255, 0.08);
+  --stroke-strong: rgba(255, 255, 255, 0.14);
+
+  /* Tekst */
+  --text-hi:  #F4F6FF;
+  --text:     #C3C8DC;
+  --text-dim: #7C8398;
+
+  /* Signatur-aurora — den ENESTE brand-accent */
+  --nova-violet: #7C5CFF;
+  --nova-indigo: #4D7CFF;
+  --nova-cyan:   #38E1FF;
+  --grad-aurora: linear-gradient(135deg, #7C5CFF 0%, #4D7CFF 45%, #38E1FF 100%);
+  --glow-aurora: 0 0 0 1px rgba(124, 92, 255, .4), 0 10px 40px -8px rgba(77, 124, 255, .45);
+
+  /* Status */
+  --ok:     #36E0A0;
+  --warn:   #FFB23E;
+  --danger: #FF5C7A;
+
+  /* Glas (flydende overlay-chips) */
+  --glass-bg:     rgba(12, 14, 22, .6);
+  --glass-blur:   blur(20px) saturate(140%);
+  --glass-shadow: 0 1px 0 rgba(255, 255, 255, .05) inset,
+                  0 18px 48px -20px rgba(0, 0, 0, .75);
+
+  /* Font-stakke med robuste fallbacks (offline-sikre) */
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-ui:      "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:    "Chakra Petch", ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Spacing-skala (base 4px): 4,8,12,16,24,32,48,64,96 */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
+  --sp-6: 24px; --sp-8: 32px; --sp-12: 48px;
+
+  /* Radius */
+  --r-control: 10px;
+  --r-card:    16px;
+  --r-pill:    999px;
+
+  /* Motion-sprog (fra DESIGN.md) */
+  --ease-out:    cubic-bezier(.22, 1, .36, 1);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-inout:  cubic-bezier(.65, 0, .35, 1);
+  --t-fast: 140ms;  --t: 220ms;  --t-slow: 420ms;
+}
+
+/* =====================================================================
+   1. #hud — rod-overlay
+   Fixed inset:0, ingen pointer-events (canvas under er fuldt interaktiv).
+   Boern der skal klikkes paa kan selv genaktivere pointer-events.
+   ===================================================================== */
+#hud {
+  position: fixed;
+  inset: 0;
+  z-index: 30;              /* overlay-lag per z-scale */
+  pointer-events: none;     /* slipper al input igennem til canvas */
+  font-family: var(--font-ui);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* HUD'en selv tegner intet i midten — kun hjoerne-regioner. */
+}
+
+/* Valgfri, meget diskret vignette — holder kanterne laesbare uden at
+   roere midten. pointer-events:none og lav opacity, sluk-bar i reduced-motion. */
+#hud::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(120% 120% at 50% 50%,
+              transparent 58%, rgba(7, 8, 13, .38) 100%);
+  opacity: .9;
+  z-index: -1;
+}
+
+/* Faint film grain — giver materiale, ikke plastik. 3.5% opacity, midten fri. */
+#hud::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: .035;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  z-index: -1;
+}
+
+/* --- Faelles glas-chip-grundlag (DRY) -------------------------------- */
+/* Brackets-aestetik: haarfin kant + indre lys-streg + bloed dyb skygge.
+   Forfinet: dybere indre lys + blødere depth-skygge, og en meget subtil
+   animeret aurora top-border highlight (corner-bracket-følelse) via ::before. */
+#hud-player,
+#hud-room {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  /* Machined glass: lagdelt fill — base-tint + svag top-sheen-gradient for
+     overbevisende indre lys, ikke en flad blur. */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, .045) 0%, rgba(255, 255, 255, 0) 38%),
+    radial-gradient(120% 140% at 50% -20%, rgba(124, 92, 255, .06) 0%, transparent 60%),
+    var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--stroke);
+  /* Skarpere depth: lys haarfin top + haarfin side-catch, bloed indre gulv-
+     skygge, og den dybe ambiente drop — laeses som machined glas med kanter. */
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, .09) inset,
+    0 0 0 1px rgba(255, 255, 255, .015) inset,
+    0 -8px 18px -14px rgba(0, 0, 0, .55) inset,
+    0 20px 52px -22px rgba(0, 0, 0, .8);
+  pointer-events: none;     /* rent display — ingen interaktion noedvendig */
+  overflow: hidden;         /* holder aurora-highlight + brackets inden for chip-radius */
+  isolation: isolate;
+}
+
+/* Subtil animeret aurora top-border highlight — en tynd lysende streg der
+   meget langsomt vandrer hen over chippens overkant. Lav opacity, kun en
+   accent-antydning over glasset; aldrig i midten af skærmen. */
+#hud-player::before,
+#hud-room::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+              transparent 0%,
+              rgba(124, 92, 255, 0) 16%,
+              rgba(124, 92, 255, .55) 36%,
+              rgba(56, 225, 255, .72) 50%,
+              rgba(77, 124, 255, .55) 64%,
+              rgba(124, 92, 255, 0) 84%,
+              transparent 100%);
+  background-size: 220% 100%;
+  background-repeat: no-repeat;
+  opacity: .6;
+  animation: chip-aurora-sweep 9s var(--ease-inout) infinite;
+  z-index: 2;
+}
+
+/* Subtil FUI hjoerne-bracket — en 1px L i oeverste venstre hjoerne, inde i
+   chip-radius. Statisk (ingen animation), aurora-tonet, meget lav opacity. */
+#hud-player::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  left: 7px;
+  width: 9px;
+  height: 9px;
+  pointer-events: none;
+  border-top: 1px solid rgba(56, 225, 255, .5);
+  border-left: 1px solid rgba(124, 92, 255, .45);
+  border-top-left-radius: 3px;
+  opacity: .7;
+  z-index: 2;
+}
+
+/* Langsom, blød vandring af aurora-highlight'en. Kun background-position +
+   opacity animeres (billigt, GPU-venligt). */
+@keyframes chip-aurora-sweep {
+  0%   { background-position: 120% 0; opacity: .35; }
+  50%  { background-position: -20% 0; opacity: .6;  }
+  100% { background-position: 120% 0; opacity: .35; }
+}
+
+/* =====================================================================
+   2. #hud-player — top-venstre spiller-chip (glas-pill)
+   ===================================================================== */
+#hud-player {
+  top: var(--sp-4);
+  left: var(--sp-4);
+  gap: 9px;
+  padding: 7px 14px 7px 9px;
+  border-radius: var(--r-pill);
+}
+
+/* Avatar-prik — basis-styling her, baggrundsfarve saettes inline via JS
+   (spillerens avatar-farve). Bloedt matchende glow er ogsaa inline-drevet,
+   men vi giver en subtil ring + fallback-skin saa den aldrig staar bar.
+   Bemaerk: main.js bruger id'et #player-dot — derfor styles BAADE klasse og id
+   ens, saa enten markup virker. */
+#hud-player .player-dot,
+#hud-player #player-dot,
+#player-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--nova-cyan);                 /* fallback foer JS saetter farve */
+  /* Skarpere seat: taet hvid kontaktring + bloed aurora-bloom. */
+  box-shadow:
+    0 0 0 1.5px rgba(255, 255, 255, .08),
+    0 0 0 3px rgba(7, 8, 13, .55),
+    0 0 9px 1px rgba(56, 225, 255, .55);
+  position: relative;
+}
+
+/* Blød idle "breathing"-glow paa spiller-prikken — en aurora-ring der
+   meget roligt aander ud/ind via ::after, saa selve prikken (og dens inline
+   farve) staar stabilt. Lav opacity, langsom rytme — lever, distraherer ikke. */
+#hud-player .player-dot::after,
+#hud-player #player-dot::after,
+#player-dot::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 7px 1px rgba(124, 92, 255, .4);
+  opacity: .45;
+  animation: dot-breathe 5.2s var(--ease-inout) infinite;
+}
+
+@keyframes dot-breathe {
+  0%, 100% { transform: scale(1);    opacity: .3;  }
+  50%      { transform: scale(1.18); opacity: .58; }
+}
+
+#hud-player .player-name,
+#hud-player #player-name,
+#player-name {
+  font-family: var(--font-ui);
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: .005em;
+  color: var(--text-hi);
+  white-space: nowrap;
+  max-width: 32ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* =====================================================================
+   3. #hud-room — top-hoejre stat-kort (Chakra Petch mono)
+   ROOM / PLAYERS / PING, med tynde lodrette dividers imellem.
+   ===================================================================== */
+#hud-room {
+  top: var(--sp-4);
+  right: var(--sp-4);
+  gap: 0;
+  padding: 9px var(--sp-4);
+  border-radius: var(--r-card);
+}
+
+#hud-room .stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 1px var(--sp-3);
+  line-height: 1;
+}
+
+/* Tynd lodret divider mellem stats — haarfin og fader i enderne (brackets). */
+#hud-room .stat + .stat {
+  border-left: 1px solid transparent;
+  border-image: linear-gradient(180deg,
+                transparent 0%,
+                rgba(255, 255, 255, .14) 28%,
+                rgba(255, 255, 255, .14) 72%,
+                transparent 100%) 1;
+}
+
+#hud-room .stat-label {
+  font-family: var(--font-ui);
+  font-size: .625rem;            /* 10px micro */
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* Stat-vaerdier. main.js opdaterer #stat-room/#stat-players/#stat-ping —
+   derfor styles BAADE .stat-value-klassen og de tre id'er ens, saa enten
+   markup virker. Bloed ease paa color/text-shadow saa skift glider i stedet
+   for at hoppe; tabular-nums saa tallene ikke rykker. */
+#hud-room .stat-value,
+#hud-room #stat-room,
+#hud-room #stat-players,
+#hud-room #stat-ping,
+#stat-room,
+#stat-players,
+#stat-ping {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: .035em;
+  color: var(--text-hi);
+  font-variant-numeric: tabular-nums; /* tal flytter sig ikke naar de skifter */
+  /* Blød overgang naar main.js skifter farve/glow (fx ping ok->warn). */
+  transition: color var(--t) var(--ease-out),
+              text-shadow var(--t) var(--ease-out);
+}
+
+/* Tasteful aurora-accent paa vaerdier — subtil farvet glow paa cyan,
+   uden at fylde. Brugt paa ROOM-id som signatur. */
+#hud-room .stat-value.is-accent {
+  color: var(--nova-cyan);
+  text-shadow: 0 0 12px rgba(56, 225, 255, .4);
+}
+
+/* Ping-vaerdi farvet efter status. */
+#hud-room .stat-value.is-ok     { color: var(--ok);     text-shadow: 0 0 10px rgba(54, 224, 160, .32); }
+#hud-room .stat-value.is-warn   { color: var(--warn);   text-shadow: 0 0 10px rgba(255, 178, 62, .32); }
+#hud-room .stat-value.is-danger { color: var(--danger); text-shadow: 0 0 10px rgba(255, 92, 122, .38); }
+
+/* Flash-hook: main.js kan toggle klassen .is-updated (eller .flash) paa en
+   stat-vaerdi naar tallet aendrer sig, for et kort aurora-shimmer-blink.
+   Ren CSS — animationen koerer naar klassen tilfoejes, og kan fjernes igen. */
+#hud-room .stat-value.is-updated,
+#hud-room .stat-value.flash,
+#stat-room.is-updated,  #stat-room.flash,
+#stat-players.is-updated, #stat-players.flash,
+#stat-ping.is-updated,  #stat-ping.flash {
+  animation: stat-flash var(--t-slow) var(--ease-out) 1;
+}
+
+@keyframes stat-flash {
+  0%   { text-shadow: 0 0 0 rgba(56, 225, 255, 0); }
+  30%  { text-shadow: 0 0 14px rgba(56, 225, 255, .7), 0 0 4px rgba(124, 92, 255, .5); }
+  100% { text-shadow: 0 0 0 rgba(56, 225, 255, 0); }
+}
+
+/* Subtil animeret scanline-underline paa selve stat-kortet — en tynd aurora
+   linje langs underkanten der meget roligt glider frem og tilbage. Diskret. */
+#hud-room::after {
+  content: "";
+  position: absolute;
+  left: var(--sp-4);
+  right: var(--sp-4);
+  bottom: 0;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+              transparent 0%,
+              rgba(56, 225, 255, .5) 50%,
+              transparent 100%);
+  background-size: 60% 100%;
+  background-repeat: no-repeat;
+  opacity: .4;
+  animation: stat-scanline 7s var(--ease-inout) infinite;
+  z-index: 1;
+}
+
+@keyframes stat-scanline {
+  0%   { background-position: -30% 0; opacity: .25; }
+  50%  { background-position: 130% 0; opacity: .5;  }
+  100% { background-position: -30% 0; opacity: .25; }
+}
+
+/* =====================================================================
+   5. #hud-conn — forbindelsesstatus-prik (placeret ved rum-chippen)
+   Pulserende bloedt glow; modifier-klasser styrer farven.
+   ===================================================================== */
+#hud-conn {
+  position: absolute;
+  top: var(--sp-4);
+  /* Sidder lige til venstre for rum-chippen i hoejre hjoerne. */
+  right: calc(var(--sp-4) + var(--sp-2));
+  /* JS/markup kan ogsaa indlejre prikken inde i #hud-room; staar her som
+     selvstaendig fallback-placering. Loeftes en anelse ned ifht. kortet. */
+  top: calc(var(--sp-4) + 13px);
+  transform: translateX(calc(-100% - var(--sp-3)));
+  pointer-events: none;
+}
+
+/* main.js bruger id'et #conn-dot — derfor styles baade klasse og id ens. */
+.conn-dot,
+#conn-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  color: var(--text-dim);          /* saa currentColor foelger status-farven */
+  position: relative;
+  vertical-align: middle;
+  /* Blød overgang naar status-farven skifter (ok/warn/danger). */
+  transition: background var(--t) var(--ease-out),
+              color var(--t) var(--ease-out),
+              box-shadow var(--t) var(--ease-out);
+}
+
+/* Den pulserende ring tegnes via ::after, saa selve prikken staar stabilt. */
+.conn-dot::after,
+#conn-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;        /* foelger status-farven, ikke kun dim */
+  opacity: .6;
+  animation: conn-pulse 2.4s var(--ease-out) infinite;
+}
+
+/* Ekstra blød aander-glow lige om prikken via ::before — giver liv uden at
+   forstyrre den skarpe ring-puls. Lav opacity, langsom rytme. */
+.conn-dot::before,
+#conn-dot::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: 0 0 6px 1px currentColor;
+  color: inherit;
+  opacity: .35;
+  animation: conn-breathe 2.8s var(--ease-inout) infinite;
+}
+
+.conn-dot.is-ok,     #conn-dot.is-ok     { background: var(--ok);     color: var(--ok);     box-shadow: 0 0 8px 1px rgba(54, 224, 160, .55); }
+.conn-dot.is-warn,   #conn-dot.is-warn   { background: var(--warn);   color: var(--warn);   box-shadow: 0 0 8px 1px rgba(255, 178, 62, .55); }
+.conn-dot.is-danger, #conn-dot.is-danger { background: var(--danger); color: var(--danger); box-shadow: 0 0 8px 1px rgba(255, 92, 122, .6); }
+
+@keyframes conn-pulse {
+  0%   { transform: scale(1);   opacity: .7; }
+  70%  { transform: scale(2.6); opacity: 0;  }
+  100% { transform: scale(2.6); opacity: 0;  }
+}
+
+@keyframes conn-breathe {
+  0%, 100% { transform: scale(1);   opacity: .25; }
+  50%      { transform: scale(1.3); opacity: .5;  }
+}
+
+/* =====================================================================
+   4. #hud-hints — bund-midte kontrol-hints (diskrete keycaps)
+   WASD bevaeg / SPACE hop / MUS kig. Lav opacity, centreret.
+   ===================================================================== */
+#hud-hints {
+  position: absolute;
+  left: 50%;
+  bottom: var(--sp-6);          /* ~24px fra bunden */
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: 0;
+  opacity: .8;                  /* diskret — fader en anelse */
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Een hint = keycap + label, holdt taet sammen. */
+#hud-hints .hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.keycap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  color: var(--text);
+  background: rgba(12, 14, 22, .5);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--stroke-strong);
+  border-radius: var(--r-control);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .04) inset,
+              0 2px 6px -2px rgba(0, 0, 0, .6);
+  /* Restraint hover-løft — diskret, kun hvis hint'en faar pointer-events. */
+  transition: transform var(--t-fast) var(--ease-out),
+              border-color var(--t-fast) var(--ease-out),
+              box-shadow var(--t-fast) var(--ease-out);
+}
+
+/* Meget diskret løft + aurora-kant naar man hover'er en keycap. */
+.keycap:hover {
+  transform: translateY(-1px);
+  border-color: rgba(124, 92, 255, .4);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .06) inset,
+              0 4px 10px -3px rgba(0, 0, 0, .65),
+              0 0 10px -2px rgba(124, 92, 255, .4);
+}
+
+.hint-label {
+  font-family: var(--font-ui);
+  font-size: .6875rem;          /* micro */
+  font-weight: 500;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* =====================================================================
+   6. .nametag — navneskilte over avatarer
+   Game'et appender disse absolut-positionerede HTML-elementer paa
+   projicerede skaerm-koordinater. JS saetter left/top = hovedets position;
+   transform centrerer + loefter chippen over hovedet.
+   ===================================================================== */
+/* #nametags — container som game'et appender navneskilte i. Fylder ingenting
+   selv (ingen baggrund), slipper input igennem; ligger ovenpaa scenen. */
+#nametags {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.nametag {
+  position: absolute;
+  transform: translate(-50%, -100%); /* anker = under-midte paa hovedet */
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px var(--sp-2) 3px var(--sp-1);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--text-hi);
+  white-space: nowrap;
+  pointer-events: none;
+  /* Tiny glas-pill */
+  background: rgba(12, 14, 22, .55);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-pill);
+  /* 2px venstre aurora-accent-bar (indre kant) + bloedt aurora-glow saa
+     skiltet lever en anelse over avataren — holdt let (mange kan staa paa
+     skaermen samtidig). */
+  box-shadow: inset 2px 0 0 0 var(--nova-violet),
+              0 2px 10px -2px rgba(0, 0, 0, .7),
+              0 0 12px -4px rgba(124, 92, 255, .5);
+  /* Drop-shadow paa selve teksten for laesbarhed over en levende 3D-scene. */
+  text-shadow: 0 1px 3px rgba(0, 0, 0, .85), 0 0 1px rgba(0, 0, 0, .9);
+  /* Lille indrykning saa teksten ikke roerer aurora-baren. */
+  padding-left: var(--sp-3);
+  /* Blød entrance naar et nyt skilt dukker op (let, kun transform+opacity). */
+  animation: nametag-in var(--t) var(--ease-spring) 1;
+}
+
+/* Let entrance: skiltet glider en anelse op og fader ind. transform-base
+   bevares (translate(-50%,-100%)) saa ankeret ikke flytter sig. */
+@keyframes nametag-in {
+  from { opacity: 0; transform: translate(-50%, calc(-100% + 4px)); }
+  to   { opacity: 1; transform: translate(-50%, -100%); }
+}
+
+/* Valgfri farve-prik inde i et navneskilt (matcher spillerens avatar-farve;
+   farve saettes inline via JS). */
+.nametag .nametag-dot {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--nova-cyan);
+  box-shadow: 0 0 6px 1px rgba(56, 225, 255, .5);
+}
+
+/* =====================================================================
+   Responsiv: smalle skaerme (<=480px) — kryb paddings/fonte en anelse
+   saa HUD'en stadig passer paa 375px uden at roere midten.
+   ===================================================================== */
+@media (max-width: 480px) {
+  #hud-player {
+    top: var(--sp-3);
+    left: var(--sp-3);
+    padding: 6px var(--sp-2) 6px 6px;
+  }
+  #hud-player .player-name { font-size: 13px; max-width: 18ch; }
+
+  #hud-room {
+    top: var(--sp-3);
+    right: var(--sp-3);
+    padding: 6px var(--sp-2);
+  }
+  #hud-room .stat { padding: 0 var(--sp-2); }
+  #hud-room .stat-label { font-size: .625rem; }
+  #hud-room .stat-value { font-size: 13px; }
+
+  #hud-conn { top: calc(var(--sp-3) + 12px); right: calc(var(--sp-3) + var(--sp-2)); }
+
+  #hud-hints {
+    bottom: var(--sp-4);
+    gap: var(--sp-3);
+  }
+  .keycap { min-width: 20px; height: 20px; font-size: 10px; }
+  .hint-label { font-size: .625rem; }
+
+  .nametag { font-size: 11px; }
+}
+
+/* =====================================================================
+   prefers-reduced-motion: sluk pulse + al auto-motion.
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  /* Sluk begge conn-dot pulser (ring + aander-glow) — baade klasse og id. */
+  .conn-dot::after,
+  #conn-dot::after {
+    animation: none;
+    opacity: 0;               /* ingen statisk dobbelt-prik tilbage */
+  }
+  .conn-dot::before,
+  #conn-dot::before {
+    animation: none;
+    opacity: 0;
+  }
+  /* Sluk alle nye HUD-animationer/transitions. Daekker chip-aurora-sweep,
+     stat-scanline, stat-flash, dot-breathe, keycap-hover osv. */
+  #hud,
+  #hud *,
+  #hud::before,
+  #hud::after,
+  #hud-player::before,
+  #hud-room::before,
+  #hud-room::after,
+  #player-dot::after {
+    animation: none !important;
+    transition: none !important;
+  }
+  /* Nametags appendes muligvis UDENFOR #hud (fx i #nametags). Sluk deres
+     entrance + glow-bevaegelse eksplicit, saa reduced-motion ogsaa daekker dem. */
+  #nametags,
+  #nametags *,
+  .nametag,
+  .nametag * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* =====================================================================
+   GAMEPLAY HUD — gamehud.js lag (.nvg-hud + boern)
+   Appended til hud.css. Samme DNA: aurora-eneste accent, 1px-strokes,
+   lave-opacity glas, ingen emoji. Alle animationer navngivet nvg-*.
+   Engelsk i kode/markup, dansk i kommentarer.
+   Reglen gaelder stadig: HUD'en blokerer ALDRIG midten under gameplay.
+   ===================================================================== */
+
+/* --- Rod-container ----------------------------------------------------
+   JS indsaetter denne direkte paa document.body (ikke inde i #hud).
+   z-index:31 laegger den et lag ovenpaa #hud (z:30). */
+.nvg-hud {
+  position: fixed;
+  inset: 0;
+  z-index: 31;
+  pointer-events: none;     /* slipper canvas-input igennem */
+  font-family: var(--font-ui);
+  color: var(--text);
+}
+
+/* Faelles skjult tilstand — JS toggler .nvg-hidden. */
+.nvg-hidden {
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  transition: opacity var(--t-slow) var(--ease-out),
+              visibility var(--t-slow) var(--ease-out) !important;
+}
+
+/* Skaermlaeser-only announcer (hoisted udenfor aria-hidden-overlayet).
+   Visuelt skjult, men tilgaengelig for assisterende teknologi. */
+.nvg-sr {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* =====================================================================
+   1. Objective-strip — top-center glaspille (opgavetekst + nedtaelling)
+   ===================================================================== */
+.nvg-objective {
+  position: absolute;
+  top: var(--sp-4);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-4);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-pill);
+  box-shadow: var(--glass-shadow);
+  white-space: nowrap;
+  animation: nvg-obj-pulse 3.4s var(--ease-inout) infinite;
+}
+
+.nvg-obj-text {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-hi);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.nvg-obj-timer {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--nova-cyan);
+  text-shadow: 0 0 8px rgba(56, 225, 255, .45);
+  letter-spacing: .02em;
+}
+.nvg-obj-timer.nvg-hidden { display: none !important; }
+
+/* Sagte pulsering — meget lav amplitude, transform bevarer centrering. */
+@keyframes nvg-obj-pulse {
+  0%, 100% { opacity: 1;   transform: translateX(-50%) scale(1); }
+  50%      { opacity: .9;  transform: translateX(-50%) scale(.994); }
+}
+
+/* =====================================================================
+   2. Scoreboard — top-hoejre UNDER #hud-room (som sidder top:16 right:16)
+   ===================================================================== */
+.nvg-scoreboard {
+  position: absolute;
+  top: 96px;
+  right: 16px;
+  min-width: 170px;
+  max-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--stroke);
+  border-radius: var(--r-card);
+  box-shadow: var(--glass-shadow);
+}
+
+.nvg-sb-title {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--stroke);
+  margin-bottom: 2px;
+}
+
+.nvg-sb-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.nvg-sb-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px var(--sp-1);
+  border-radius: var(--r-control);
+  transition: transform var(--t) var(--ease-out),
+              opacity var(--t) var(--ease-out),
+              background var(--t) var(--ease-out);
+}
+
+/* Farvet prik — JS saetter background inline til spillerfarven. */
+.nvg-sb-dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--nova-cyan);   /* fallback foer JS saetter farve */
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .05);
+}
+
+.nvg-sb-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nvg-sb-score {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-hi);
+}
+
+/* Self-highlight: aurora venstre-kant + svag tint. */
+.nvg-sb-row.nvg-self {
+  background: rgba(124, 92, 255, .10);
+  box-shadow: inset 2px 0 0 var(--nova-violet);
+}
+.nvg-sb-row.nvg-self .nvg-sb-name { color: var(--text-hi); }
+
+/* Elimineret: udtonet + overstreget. */
+.nvg-sb-row.nvg-elim { opacity: .42; }
+.nvg-sb-row.nvg-elim .nvg-sb-name {
+  text-decoration: line-through;
+  color: var(--text-dim);
+}
+
+/* Score-flash — JS tilfoejer/fjerner .nvg-flash for at re-trigge. */
+.nvg-sb-score.nvg-flash {
+  animation: nvg-score-flash var(--t-slow) var(--ease-out) forwards;
+}
+@keyframes nvg-score-flash {
+  0%   { text-shadow: 0 0 0 rgba(56, 225, 255, 0); transform: scale(1); }
+  20%  { text-shadow: 0 0 12px rgba(56, 225, 255, .85), 0 0 24px rgba(124, 92, 255, .55);
+         transform: scale(1.15); }
+  60%  { text-shadow: 0 0 6px rgba(56, 225, 255, .40), 0 0 12px rgba(124, 92, 255, .25);
+         transform: scale(1.04); }
+  100% { text-shadow: none; transform: scale(1); }
+}
+
+/* =====================================================================
+   3. Time Bomb — vandret centreret, under objective.
+   Blokerer IKKE gameplay-midten (top:72px).
+   ===================================================================== */
+.nvg-bomb {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-1) var(--sp-4);
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 92, 122, .35);
+  border-radius: var(--r-pill);
+  box-shadow: var(--glass-shadow);
+  white-space: nowrap;
+  animation: nvg-bomb-pulse 2.8s var(--ease-inout) infinite;
+  transition: opacity var(--t-slow) var(--ease-out),
+              visibility var(--t-slow) var(--ease-out);
+}
+
+.nvg-bomb-label {
+  font-family: var(--font-ui);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.nvg-bomb-timer {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--danger);
+  text-shadow: 0 0 10px rgba(255, 92, 122, .45);
+  letter-spacing: .02em;
+}
+.nvg-bomb-timer.nvg-hidden { display: none !important; }
+
+/* Standard "bombe i spil" pulsering — rolig. */
+@keyframes nvg-bomb-pulse {
+  0%, 100% { opacity: .9; }
+  50%      { opacity: 1; }
+}
+
+/* "DU HAR BOMBEN - LOEB!" — stor, roed, hastende. */
+.nvg-bomb.nvg-bomb-mine {
+  background: rgba(255, 92, 122, .14);
+  border-color: var(--danger);
+  box-shadow: 0 0 0 1px rgba(255, 92, 122, .50),
+              0 0 40px -6px rgba(255, 92, 122, .60),
+              var(--glass-shadow);
+  animation: nvg-bomb-urgent 700ms var(--ease-inout) infinite;
+}
+.nvg-bomb.nvg-bomb-mine .nvg-bomb-label {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text-hi);
+}
+.nvg-bomb.nvg-bomb-mine .nvg-bomb-timer { font-size: 20px; }
+
+@keyframes nvg-bomb-urgent {
+  0%, 100% {
+    transform: translateX(-50%) scale(1);
+    box-shadow: 0 0 0 1px rgba(255, 92, 122, .50),
+                0 0 40px -6px rgba(255, 92, 122, .60),
+                var(--glass-shadow);
+  }
+  50% {
+    transform: translateX(-50%) scale(1.025);
+    box-shadow: 0 0 0 1px rgba(255, 92, 122, .75),
+                0 0 64px -4px rgba(255, 92, 122, .85),
+                var(--glass-shadow);
+  }
+}
+
+/* "Elimineret - du ser paa" — neutral, ingen fare. */
+.nvg-bomb.nvg-elim-state {
+  border-color: var(--stroke);
+  background: var(--glass-bg);
+  box-shadow: var(--glass-shadow);
+  animation: none;
+  opacity: .6;
+}
+.nvg-bomb.nvg-elim-state .nvg-bomb-label,
+.nvg-bomb.nvg-elim-state .nvg-bomb-timer {
+  color: var(--text-dim);
+  text-shadow: none;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: .04em;
+}
+
+/* =====================================================================
+   4. Center-banner — sejr / lobby. Kortvarig, fader, blokerer ikke laenge.
+   ===================================================================== */
+.nvg-banner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  text-align: center;
+  pointer-events: none;
+  transition: opacity var(--t-slow) var(--ease-out),
+              visibility var(--t-slow) var(--ease-out),
+              transform var(--t-slow) var(--ease-out);
+}
+
+/* Entrance naar banneret vises (JS fjerner .nvg-hidden). */
+.nvg-banner:not(.nvg-hidden) {
+  animation: nvg-banner-in var(--t-slow) var(--ease-spring) both;
+}
+@keyframes nvg-banner-in {
+  from { opacity: 0; transform: translate(-50%, -48%) scale(.92); }
+  to   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* 4a. Sejr-banner — aurora gradient-tekst der flyder. */
+.nvg-banner-win .nvg-banner-title {
+  font-family: var(--font-display);
+  font-size: 38px;
+  font-weight: 700;
+  letter-spacing: -.01em;
+  background: var(--grad-aurora);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 16px rgba(77, 124, 255, .55))
+          drop-shadow(0 0 32px rgba(124, 92, 255, .30));
+  animation: nvg-aurora-flow 3s linear infinite;
+}
+@keyframes nvg-aurora-flow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+/* 4b. Lobby-banner — roligere, aandende. */
+.nvg-banner-lobby .nvg-banner-title {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: .01em;
+  animation: nvg-lobby-breathe 3.6s var(--ease-inout) infinite;
+}
+@keyframes nvg-lobby-breathe {
+  0%, 100% { opacity: .7; }
+  50%      { opacity: 1; }
+}
+
+/* =====================================================================
+   5. Responsiv — mobil (<=480px)
+   ===================================================================== */
+@media (max-width: 480px) {
+  .nvg-scoreboard {
+    top: 84px;
+    right: 10px;
+    min-width: 140px;
+    max-width: 200px;
+    padding: var(--sp-1) var(--sp-2);
+  }
+  .nvg-sb-name, .nvg-sb-score, .nvg-sb-title { font-size: 12px; }
+
+  .nvg-objective { padding: var(--sp-1) var(--sp-3); }
+  .nvg-obj-text, .nvg-obj-timer { font-size: 11px; }
+
+  .nvg-bomb-timer { font-size: 15px; }
+  .nvg-bomb.nvg-bomb-mine .nvg-bomb-label { font-size: 13px; }
+  .nvg-bomb.nvg-bomb-mine .nvg-bomb-timer { font-size: 17px; }
+
+  .nvg-banner-win .nvg-banner-title { font-size: 26px; }
+  .nvg-banner-lobby .nvg-banner-title { font-size: 18px; }
+}
+
+/* =====================================================================
+   6. prefers-reduced-motion — sluk al nvg-motion; behold laesbarhed.
+   ===================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  .nvg-hud,
+  .nvg-hud * {
+    animation: none !important;
+    transition: none !important;
+  }
+  /* Gradient-tekst-fallback saa sejr-banneret stadig kan laeses. */
+  .nvg-banner-win .nvg-banner-title {
+    background: none;
+    -webkit-background-clip: border-box;
+    -webkit-text-fill-color: var(--text-hi);
+    background-clip: border-box;
+    color: var(--text-hi);
+    filter: none;
+  }
+  /* Banners/chips vises/skjules oejeblikkeligt. */
+  .nvg-hidden { opacity: 0 !important; visibility: hidden !important; }
+}
